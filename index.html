@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ASCII Lily Bouquet</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap">
+<style>
+:root{--bg:#05060a;--fg:#e9e4d6;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:dark}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg)}
+body{display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:Georgia,'Times New Roman',serif}
+canvas{max-width:100%;max-height:86vh;aspect-ratio:660/1100;cursor:pointer}
+p{margin:.4rem 0 0;font-size:.9rem;opacity:.6;font-style:italic}
+</style>
+</head>
+<body>
+<canvas id="c" width="660" height="1100" aria-label="Animated bouquet of lilies drawn in colored text characters"></canvas>
+<p>Tap the bouquet to grow it again.</p>
+<script>
+const CW=110,CH=135,CELL_W=6,CELL_H=7,OW=220,OH=270;
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const off=document.createElement('canvas');off.width=OW;off.height=OH;
+const o=off.getContext('2d',{willReadFrequently:true});
+const RAMP=' .,:;-=+*#%@';
+const ease=x=>x<0?0:x>1?1:1-Math.pow(1-x,3);
+const clamp=x=>Math.max(0,Math.min(1,x));
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Flowers: head position, size, rotation, colour, bloom start (seconds)
+const F=[
+ {x:112,y:58,s:34,r:.3,c:[190,40,70],d:5.6},
+ {x:70,y:100,s:36,r:.8,c:[140,30,70],d:4.6},
+ {x:150,y:92,s:32,r:.1,c:[235,190,40],d:5.2},
+ {x:44,y:150,s:34,r:.5,c:[240,200,50],d:4.0},
+ {x:172,y:140,s:34,r:1,c:[210,40,60],d:4.4},
+ {x:118,y:112,s:46,r:.2,c:[230,25,35],d:3.4},
+ {x:78,y:158,s:42,r:.6,c:[235,80,200],d:3.0},
+ {x:140,y:172,s:44,r:.9,c:[240,230,215],d:3.8},
+ {x:104,y:198,s:44,r:.4,c:[245,215,175],d:3.2},
+ {x:160,y:200,s:30,r:.7,c:[160,20,40],d:4.8}
+];
+const BASE=[110,266];
+const stars=Array.from({length:70},()=>({x:Math.random()*CW|0,y:Math.random()*CH|0,p:Math.random()*6}));
+let t0=performance.now();
+try{document.fonts.load('100px "Great Vibes"')}catch(e){}
+const SP=Array.from({length:16},()=>({x:60+Math.random()*540,y:950+Math.random()*140,r:4+Math.random()*7,p:Math.random()*6}));
+
+function stem(f,i,g,sway){
+  const hx=f.x+sway*(1-(f.y/OH)),hy=f.y+f.s*.2;
+  const bx=BASE[0]+(f.x-110)*.12,by=BASE[1];
+  const cx=(hx+bx)/2+(i%2?-14:14),cy=(hy+by)/2+10;
+  o.strokeStyle='rgb(70,170,60)';o.lineWidth=2;o.beginPath();
+  for(let k=0;k<=24;k++){
+    const u=k/24*g,a=(1-u)*(1-u),b=2*(1-u)*u,c=u*u;
+    const px=a*bx+b*cx+c*hx,py=a*by+b*cy+c*hy;
+    k?o.lineTo(px,py):o.moveTo(px,py);
+  }
+  o.stroke();
+}
+function leaf(x,y,ang,len,g){
+  const L=len*g;if(L<1)return;
+  o.save();o.translate(x,y);o.rotate(ang);
+  const gr=o.createLinearGradient(0,0,L,0);gr.addColorStop(0,'rgb(30,110,40)');gr.addColorStop(1,'rgb(120,220,80)');
+  o.fillStyle=gr;o.beginPath();o.moveTo(0,0);
+  o.quadraticCurveTo(L*.5,-L*.2,L,0);o.quadraticCurveTo(L*.5,L*.12,0,0);o.fill();
+  o.strokeStyle='rgba(200,255,170,.7)';o.lineWidth=.8;o.beginPath();o.moveTo(0,0);o.lineTo(L*.95,0);o.stroke();
+  o.restore();
+}
+function lily(f,open,tw){
+  if(open<=.02)return;
+  const [r,g,b]=f.c,L=f.s*open,w=f.s*.3*open;
+  o.save();o.translate(f.x,f.y);o.rotate(f.r+tw);o.scale(1,.82);
+  for(let k=0;k<6;k++){
+    o.save();o.rotate(k*Math.PI/3+(k%2?.08:0));
+    const gr=o.createLinearGradient(0,0,L,0);
+    gr.addColorStop(0,`rgb(${r*.45|0},${g*.45|0},${b*.45|0})`);
+    gr.addColorStop(.55,`rgb(${r},${g},${b})`);
+    gr.addColorStop(1,`rgb(${Math.min(255,r+50)},${Math.min(255,g+50)},${Math.min(255,b+50)})`);
+    o.fillStyle=gr;o.beginPath();o.moveTo(0,0);
+    o.bezierCurveTo(L*.25,-w,L*.7,-w*1.15,L,0);
+    o.bezierCurveTo(L*.7,w*1.15,L*.25,w,0,0);o.fill();
+    o.strokeStyle=`rgba(255,255,255,.35)`;o.lineWidth=.9;
+    o.beginPath();o.moveTo(L*.1,0);o.lineTo(L*.85,0);o.stroke();
+    o.restore();
+  }
+  // stamens
+  o.strokeStyle='rgb(240,170,60)';o.fillStyle='rgb(150,70,20)';o.lineWidth=.8;
+  for(let k=0;k<5;k++){
+    const a=k*1.25+f.r,sl=L*.5*open;
+    o.beginPath();o.moveTo(0,0);o.lineTo(Math.cos(a)*sl,Math.sin(a)*sl);o.stroke();
+    o.fillRect(Math.cos(a)*sl-1,Math.sin(a)*sl-1,2.4,2.4);
+  }
+  o.restore();
+}
+
+function scene(t){
+  o.fillStyle='#000';o.fillRect(0,0,OW,OH);
+  const sway=reduce?0:Math.sin(t*.9)*(t>6?4:1.5);
+  F.forEach((f,i)=>stem(f,i,ease((t-i*.15)/3),sway));
+  // leaves at the base and along the stems
+  const LV=[[-2.5,60],[-2.1,70],[-.6,62],[-1.0,72],[-1.57,80],[-2.9,45],[-.25,48],[-1.8,64],[-1.35,66]];
+  LV.forEach((l,i)=>leaf(BASE[0]+(i-4)*3,BASE[1]-2,l[0],l[1],ease((t-.4-i*.12)/2.4)));
+  [[84,205,-2.3],[138,214,-.8],[104,150,-2.0],[126,160,-1.1],[96,115,-2.4]].forEach((l,i)=>
+    leaf(l[0],l[1],l[2],26,ease((t-2.2-i*.2)/1.6)));
+  // flowers, back to front by size
+  F.map((f,i)=>({f,i})).sort((a,b)=>a.f.s-b.f.s).forEach(({f,i})=>{
+    const s=sway*(1-(f.y/OH));
+    const g={...f,x:f.x+s};
+    lily(g,ease((t-f.d)/2.2),reduce?0:Math.sin(t*.6+i)*.04);
+  });
+}
+
+function frame(now){
+  const t=reduce?20:(now-t0)/1000;
+  scene(t);
+  const px=o.getImageData(0,0,OW,OH).data;
+  ctx.fillStyle='#05060a';ctx.fillRect(0,0,cv.width,cv.height);
+  ctx.font='9px "Courier New",monospace';ctx.textBaseline='top';
+  for(let y=0;y<CH;y++)for(let x=0;x<CW;x++){
+    const i=((y*2)*OW+x*2)*4,r=px[i],g=px[i+1],b=px[i+2];
+    const lum=.3*r+.59*g+.11*b;
+    if(lum<14)continue;
+    const ch=RAMP[Math.min(RAMP.length-1,lum/256*RAMP.length|0)];
+    ctx.fillStyle=`rgb(${Math.min(255,r*1.25)|0},${Math.min(255,g*1.25)|0},${Math.min(255,b*1.25)|0})`;
+    ctx.fillText(ch,x*CELL_W,y*CELL_H);
+  }
+  for(const s of stars){
+    const a=.25+.6*Math.abs(Math.sin(t*1.2+s.p));
+    if(px[((s.y*2)*OW+s.x*2)*4+3]&&(px[((s.y*2)*OW+s.x*2)*4]+px[((s.y*2)*OW+s.x*2)*4+1])>30)continue;
+    ctx.fillStyle=`rgba(230,235,255,${a})`;ctx.fillRect(s.x*CELL_W+1,s.y*CELL_H+1,2,2);
+  }
+  // Birthday message: script lettering written letter by letter, flourish and sparkles
+  if(t>7){
+    const MSG='Happy Birthday for you',FAM='"Great Vibes","Snell Roundhand",cursive';
+    ctx.save();ctx.textBaseline='alphabetic';ctx.textAlign='left';
+    ctx.font='100px '+FAM;
+    const fs=Math.min(100,100*580/ctx.measureText(MSG).width);
+    ctx.font=fs+'px '+FAM;
+    const tw=ctx.measureText(MSG).width,sx=(cv.width-tw)/2,by=1020;
+    const gr=ctx.createLinearGradient(sx,0,sx+tw,0);
+    gr.addColorStop(0,'#ffc4dc');gr.addColorStop(.5,'#fff1c9');gr.addColorStop(1,'#ffb5d3');
+    ctx.fillStyle=gr;ctx.shadowColor='rgba(255,150,200,.8)';ctx.shadowBlur=22;
+    for(let i=0;i<MSG.length;i++){
+      const a=ease((t-7-i*.09)/.9);if(a<=0)continue;
+      ctx.globalAlpha=a;
+      ctx.fillText(MSG[i],sx+ctx.measureText(MSG.slice(0,i)).width,by+(1-a)*18);
+    }
+    const fa=ease((t-9.2)/1.2),mx=cv.width/2;
+    if(fa>0){
+      ctx.globalAlpha=fa;ctx.shadowBlur=10;
+      const lg=ctx.createLinearGradient(mx-200,0,mx+200,0);
+      lg.addColorStop(0,'rgba(255,200,225,0)');lg.addColorStop(.5,'rgba(255,225,190,.9)');lg.addColorStop(1,'rgba(255,200,225,0)');
+      ctx.strokeStyle=lg;ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.moveTo(mx-200,1058);ctx.lineTo(mx+200,1058);ctx.stroke();
+      ctx.fillStyle='#ffe3c4';ctx.beginPath();
+      ctx.moveTo(mx,1050);ctx.lineTo(mx+8,1058);ctx.lineTo(mx,1066);ctx.lineTo(mx-8,1058);ctx.fill();
+    }
+    ctx.shadowBlur=8;ctx.strokeStyle='#fff6dc';ctx.lineWidth=1.4;
+    const sa=ease((t-8)/1.5);
+    SP.forEach(p=>{
+      const a=sa*Math.max(0,Math.sin(t*1.7+p.p));if(a<.05)return;
+      ctx.globalAlpha=a;const r=p.r*(.6+.4*a);
+      ctx.beginPath();ctx.moveTo(p.x-r,p.y);ctx.lineTo(p.x+r,p.y);ctx.moveTo(p.x,p.y-r);ctx.lineTo(p.x,p.y+r);ctx.stroke();
+    });
+    ctx.restore();
+  }
+  if(!reduce)requestAnimationFrame(frame);
+}
+cv.addEventListener('click',()=>{t0=performance.now();if(reduce)requestAnimationFrame(frame)});
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
